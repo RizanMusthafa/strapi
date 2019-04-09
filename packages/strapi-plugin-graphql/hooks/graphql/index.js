@@ -7,7 +7,7 @@
 // Public node modules.
 const _ = require('lodash');
 const path = require('path');
-const glob = require('glob');
+const util = require('util');
 const { ApolloServer } = require('apollo-server-koa');
 const depthLimit = require('graphql-depth-limit');
 
@@ -20,76 +20,96 @@ module.exports = strapi => {
       }
 
       strapi.config.hook.load.after.push('graphql');
-
       // Load core utils.
-      const utils = require(path.resolve(
-        strapi.config.appPath,
-        'node_modules',
-        'strapi',
-        'lib',
-        'utils'
-      ));
 
-      // Set '*.graphql' files configurations in the global variable.
-      await Promise.all([
-        // Load root configurations.
-        new Promise((resolve, reject) => {
-          glob(
-            './config/*.graphql?(.js)',
-            {
-              cwd: strapi.config.appPath,
-            },
-            (err, files) => {
-              if (err) {
-                return reject(err);
-              }
+      const { appPath, installedPlugins } = strapi.config;
+      const loadUtils = require('strapi/lib/load');
 
-              utils.loadConfig
-                .call(strapi, files, true)
-                .then(resolve)
-                .catch(reject);
-            }
-          );
-        }),
-        // Load APIs configurations.
-        new Promise((resolve, reject) => {
-          glob(
-            './api/*/config/*.graphql?(.js)',
-            {
-              cwd: strapi.config.appPath,
-            },
-            (err, files) => {
-              if (err) {
-                return reject(err);
-              }
+      const apis = await loadUtils.loadFiles(
+        appPath,
+        'api/**/config/*.graphql?(.js)'
+      );
+      _.merge(strapi, apis);
 
-              utils.loadConfig
-                .call(strapi, files, true)
-                .then(resolve)
-                .catch(reject);
-            }
-          );
-        }),
-        // Load plugins configurations.
-        new Promise((resolve, reject) => {
-          glob(
-            './plugins/*/config/*.graphql?(.js)',
-            {
-              cwd: strapi.config.appPath,
-            },
-            (err, files) => {
-              if (err) {
-                return reject(err);
-              }
+      const localSchema = await loadUtils.loadFiles(
+        path.resolve(__dirname, '../..'),
+        'config/*.graphql?(.js)'
+      );
 
-              utils.loadConfig
-                .call(strapi, files, true)
-                .then(resolve)
-                .catch(reject);
-            }
-          );
-        }),
-      ]);
+      _.merge(strapi, _.set({}, ['plugins', 'graphql'], localSchema));
+
+      for (let pluginName of installedPlugins) {
+        const pluginDir = loadUtils.findPackagePath(
+          `strapi-plugin-${pluginName}`
+        );
+
+        const result = await loadUtils.loadFiles(
+          pluginDir,
+          'config/*.graphql?(.js)'
+        );
+        _.merge(strapi, _.set({}, ['plugins', pluginName], result));
+      }
+
+      // // Set '*.graphql' files configurations in the global variable.
+      // await Promise.all([
+      //   // Load root configurations.
+      //   new Promise((resolve, reject) => {
+      //     glob(
+      //       './config/*.graphql?(.js)',
+      //       {
+      //         cwd: strapi.config.appPath,
+      //       },
+      //       (err, files) => {
+      //         if (err) {
+      //           return reject(err);
+      //         }
+
+      //         utils.loadConfig
+      //           .call(strapi, files, true)
+      //           .then(resolve)
+      //           .catch(reject);
+      //       }
+      //     );
+      //   }),
+      //   // Load APIs configurations.
+      //   new Promise((resolve, reject) => {
+      //     glob(
+      //       './api/*/config/*.graphql?(.js)',
+      //       {
+      //         cwd: strapi.config.appPath,
+      //       },
+      //       (err, files) => {
+      //         if (err) {
+      //           return reject(err);
+      //         }
+
+      //         utils.loadConfig
+      //           .call(strapi, files, true)
+      //           .then(resolve)
+      //           .catch(reject);
+      //       }
+      //     );
+      //   }),
+      //   // Load plugins configurations.
+      //   new Promise((resolve, reject) => {
+      //     glob(
+      //       './plugins/*/config/*.graphql?(.js)',
+      //       {
+      //         cwd: strapi.config.appPath,
+      //       },
+      //       (err, files) => {
+      //         if (err) {
+      //           return reject(err);
+      //         }
+
+      //         utils.loadConfig
+      //           .call(strapi, files, true)
+      //           .then(resolve)
+      //           .catch(reject);
+      //       }
+      //     );
+      //   }),
+      // ]);
 
       /*
        * Create a merge of all the GraphQL configuration.
@@ -142,10 +162,15 @@ module.exports = strapi => {
     },
 
     initialize: function(cb) {
-      const { typeDefs, resolvers } = strapi.plugins.graphql.services.schema.generateSchema();
+      const {
+        typeDefs,
+        resolvers,
+      } = strapi.plugins.graphql.services.schema.generateSchema();
 
       if (_.isEmpty(typeDefs)) {
-        strapi.log.warn('GraphQL schema has not been generated because it\'s empty');
+        strapi.log.warn(
+          `GraphQL schema has not been generated because it's empty`
+        );
 
         return cb();
       }

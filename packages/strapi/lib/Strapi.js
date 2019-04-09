@@ -230,17 +230,19 @@ class Strapi extends EventEmitter {
       'package.json'
     ));
 
-    this.config.installedPlugins = Object.keys(
-      this.config.info.dependencies
-    ).filter(d => d.startsWith('strapi-plugin'));
+    this.config.installedPlugins = Object.keys(this.config.info.dependencies)
+      .filter(d => d.startsWith('strapi-plugin'))
+      .map(pkgName => pkgName.substring('strapi-plugin'.length + 1));
 
     this.config.installedMiddlewares = Object.keys(
       this.config.info.dependencies
-    ).filter(d => d.startsWith('strapi-middleware'));
+    )
+      .filter(d => d.startsWith('strapi-middleware'))
+      .map(pkgName => pkgName.substring('strapi-middleware'.length + 1));
 
-    this.config.installedHooks = Object.keys(
-      this.config.info.dependencies
-    ).filter(d => d.startsWith('strapi-hook'));
+    this.config.installedHooks = Object.keys(this.config.info.dependencies)
+      .filter(d => d.startsWith('strapi-hook'))
+      .map(pkgName => pkgName.substring('strapi-hook'.length + 1));
 
     // load configs
     _.merge(this, await loadConfigs(this.config));
